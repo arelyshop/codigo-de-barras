@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Escáner de Código de Barras</title>
+    <!-- Incluyendo Tailwind CSS para un diseño moderno y adaptable -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Importando la biblioteca ZXing para el escaneo de códigos de barras -->
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.0/umd/index.min.js"></script>
+    <style>
+        /* Estilos para asegurar que el video se ajuste bien en todos los dispositivos */
+        #video {
+            width: 100%;
+            height: auto;
+            max-width: 640px;
+            border-radius: 0.75rem; /* Bordes redondeados */
+            transform: scaleX(-1); /* Espejar el video para una vista más natural */
+        }
+        .scanner-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            overflow: hidden;
+            border-radius: 0.75rem;
+        }
+        /* Línea de escaneo animada para una mejor experiencia de usuario */
+        .scan-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: rgba(255, 0, 0, 0.7);
+            box-shadow: 0 0 10px rgba(255, 0, 0, 0.9);
+            animation: scanning 2s infinite linear;
+            border-radius: 5px;
+            display: none; /* Oculta por defecto */
+        }
+        @keyframes scanning {
+            0% { top: 0; }
+            100% { top: 100%; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 flex flex-col items-center justify-center min-h-screen font-sans p-4">
+
+    <div class="w-full max-w-2xl bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 md:p-8 text-center">
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-800 dark:text-white mb-4">Escáner de Códigos</h1>
+        <p class="text-gray-600 dark:text-gray-300 mb-6">Presiona el botón para iniciar la cámara y escanear un código de barras o QR.</p>
+
+        <!-- Contenedor principal de la aplicación -->
+        <div id="app-container">
+            <!-- Botón para iniciar el escaneo -->
+            <button id="startButton" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-6 rounded-lg text-lg transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-indigo-300">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 inline-block mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                Iniciar Escaneo
+            </button>
+
+            <!-- Área donde se mostrará el video de la cámara -->
+            <div id="video-container" class="scanner-container mt-4 hidden">
+                <video id="video"></video>
+                <div class="scan-line" id="scan-line"></div>
+            </div>
+        </div>
+
+        <!-- Área para mostrar el resultado del escaneo -->
+        <div id="result-container" class="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg hidden">
+            <h2 class="text-xl font-semibold text-gray-700 dark:text-white mb-2">Resultado:</h2>
+            <p id="result" class="text-lg text-indigo-600 dark:text-indigo-400 break-words font-mono"></p>
+            <button id="resetButton" class="mt-4 bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-4 rounded-lg transition-transform transform hover:scale-105 focus:outline-none focus:ring-4 focus:ring-gray-300">
+                Escanear de Nuevo
+            </button>
+        </div>
+
+        <!-- Mensaje de error en caso de que no se pueda acceder a la cámara -->
+        <div id="error-message" class="mt-4 p-4 bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-200 rounded-lg hidden">
+            <p><strong>Error:</strong> No se pudo acceder a la cámara. Por favor, asegúrate de haber concedido los permisos necesarios en tu navegador.</p>
+        </div>
+    </div>
+
+    <footer class="mt-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+        <p>Desarrollado con ZXing/library y Tailwind CSS.</p>
+    </footer>
+
+    <script type="module">
+        // Espera a que el DOM esté completamente cargado
+        document.addEventListener('DOMContentLoaded', () => {
+            // Obtiene las referencias a los elementos del DOM
+            const startButton = document.getElementById('startButton');
+            const resetButton = document.getElementById('resetButton');
+            const videoContainer = document.getElementById('video-container');
+            const video = document.getElementById('video');
+            const resultContainer = document.getElementById('result-container');
+            const resultElement = document.getElementById('result');
+            const errorMessage = document.getElementById('error-message');
+            const scanLine = document.getElementById('scan-line');
+
+            // Instancia el lector de códigos de la biblioteca ZXing
+            const codeReader = new ZXing.BrowserMultiFormatReader();
+            let selectedDeviceId; // Variable para almacenar el ID de la cámara
+
+            // Función para iniciar el escaneo
+            async function startScan() {
+                try {
+                    // Oculta el botón de inicio y mensajes previos
+                    startButton.classList.add('hidden');
+                    resultContainer.classList.add('hidden');
+                    errorMessage.classList.add('hidden');
+                    
+                    // Obtiene la lista de dispositivos de video (cámaras)
+                    const videoInputDevices = await codeReader.listVideoInputDevices();
+                    if (videoInputDevices.length === 0) {
+                        throw new Error("No se encontraron cámaras.");
+                    }
+
+                    // Prioriza la cámara trasera ('environment') en dispositivos móviles
+                    const rearCamera = videoInputDevices.find(device => device.label.toLowerCase().includes('back') || device.label.toLowerCase().includes('rear') || device.label.toLowerCase().includes('trasera'));
+                    selectedDeviceId = rearCamera ? rearCamera.deviceId : videoInputDevices[0].deviceId;
+
+                    // Muestra el contenedor del video y la línea de escaneo
+                    videoContainer.classList.remove('hidden');
+                    scanLine.style.display = 'block';
+
+                    // Inicia el decodificador de video usando la cámara seleccionada
+                    codeReader.decodeFromVideoDevice(selectedDeviceId, 'video', (result, err) => {
+                        if (result) {
+                            // Si se encuentra un resultado...
+                            console.log('Código detectado:', result);
+                            
+                            // Muestra el resultado en la pantalla
+                            resultElement.textContent = result.getText();
+                            resultContainer.classList.remove('hidden');
+
+                            // Detiene el escaneo y la cámara
+                            stopScan();
+
+                            // Opcional: Vibra el dispositivo para notificar al usuario
+                            if (navigator.vibrate) {
+                                navigator.vibrate(200);
+                            }
+                        }
+                        if (err && !(err instanceof ZXing.NotFoundException)) {
+                            // Si ocurre un error que no sea "código no encontrado"
+                            console.error('Error de escaneo:', err);
+                            errorMessage.textContent = `Error de escaneo: ${err.message}`;
+                            errorMessage.classList.remove('hidden');
+                            stopScan();
+                        }
+                    });
+
+                } catch (error) {
+                    // Captura errores, como la denegación de permisos de cámara
+                    console.error('Error al iniciar el escáner:', error);
+                    errorMessage.textContent = `Error al iniciar: ${error.message}. Asegúrate de conceder permisos a la cámara.`;
+                    errorMessage.classList.remove('hidden');
+                    stopScan();
+                }
+            }
+
+            // Función para detener el escaneo y limpiar
+            function stopScan() {
+                codeReader.reset(); // Detiene la cámara y el lector
+                videoContainer.classList.add('hidden'); // Oculta el video
+                scanLine.style.display = 'none'; // Oculta la línea de escaneo
+            }
+
+            // Función para reiniciar la interfaz
+            function resetApp() {
+                stopScan();
+                resultContainer.classList.add('hidden');
+                errorMessage.classList.add('hidden');
+                startButton.classList.remove('hidden');
+                resultElement.textContent = '';
+            }
+
+            // Asigna los eventos a los botones
+            startButton.addEventListener('click', startScan);
+            resetButton.addEventListener('click', resetApp);
+        });
+    </script>
+</body>
+</html>
